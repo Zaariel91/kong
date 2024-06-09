@@ -1,0 +1,124 @@
+version: '3.9'
+
+x-kong-config: &kong-env
+  KONG_PG_DATABASE: ${KONG_PG_DATABASE:-kong}
+  KONG_PG_HOST: db
+  KONG_PG_USER: ${KONG_PG_USER:-kong}
+  KONG_PG_PASSWORD: ${KONG_PG_PASSWORD:-kong}
+  KONG_DATABASE: postgres
+  KONG_ERROR_TEMPLATE_HTML: "/opt/kong/template.html"
+
+volumes:
+  kong_data: {}
+  kong_prefix_vol:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+  kong_tmp_vol:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+
+services:
+#  backuper:
+#    image: ghcr.io/dipdup-io/postgres-s3-backup:master
+#    depends_on:
+#      - db
+#    environment:
+#      - S3_ENDPOINT=${S3_ENDPOINT:-https://fra1.digitaloceanspaces.com}
+#      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
+#      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
+#      - S3_BUCKET=${S3_BUCKET:-tzkt}
+#      - S3_PATH=${S3_PATH:-snapshots}
+#      - S3_FILENAME=${S3_FILENAME}
+#      - PG_BACKUP_FILE=${PG_BACKUP_FILE}
+#      - PG_BACKUP_ACTION=${PG_BACKUP_ACTION:-dump}
+#      - POSTGRES_USER=${POSTGRES_USER:-kong}
+#      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-kong}
+#      - POSTGRES_DB=${POSTGRES_DB:-kong}
+#      - POSTGRES_HOST=${POSTGRES_HOST:-db}
+#      - POSTGRES_EXTRA_OPTS=${POSTGRES_EXTRA_OPTS}
+#      - HEARTBEAT_URI=${HEARTBEAT_URI}
+#      - SCHEDULE=${SCHEDULE}
+#      - PRIVATE_BACKUP=${PRIVATE_BACKUP}
+  
+  kong-migrations:
+    image: "${KONG_DOCKER_TAG:-kong:3.6.1}"
+    command: kong migrations bootstrap
+    depends_on:
+      - db
+    environment:
+      <<: *kong-env
+    restart: on-failure
+
+  kong-migrations-up:
+    image: "${KONG_DOCKER_TAG:-kong:3.6.1}"
+    command: kong migrations up && kong migrations finish
+    depends_on:
+      - db
+    environment:
+      <<: *kong-env
+    restart: on-failure
+
+  kong:
+    image: "${KONG_DOCKER_TAG:-kong:3.6.1}"
+    user: "${KONG_USER:-kong}"
+    environment:
+      <<: *kong-env
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_PROXY_LISTEN: "${KONG_PROXY_LISTEN:-0.0.0.0:8000}"
+      KONG_ADMIN_LISTEN: "${KONG_ADMIN_LISTEN:-0.0.0.0:8001}"
+      KONG_ADMIN_GUI_LISTEN: "${KONG_ADMIN_GUI_LISTEN:-0.0.0.0:8002}"
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+#      KONG_LOG_LEVEL: debug
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_PREFIX: ${KONG_PREFIX:-/var/run/kong}
+      KONG_HEADERS: "off"
+    ports:
+      - "127.0.0.1:8000:8000/tcp"
+      - "127.0.0.1:8443:8443/tcp"
+      - "127.0.0.1:8001:8001/tcp"
+      - "127.0.0.1:8444:8444/tcp"
+      - "127.0.0.1:8002:8002/tcp"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-d",
+          "${KONG_PG_DATABASE:-kong}",
+          "-U",
+          "${KONG_PG_USER:-kong}"
+        ]
+
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    restart: always
+    read_only: true
+    volumes:
+      - kong_prefix_vol:${KONG_PREFIX:-/var/run/kong}
+      - kong_tmp_vol:/tmp
+     # - ./config:/opt/kong
+    security_opt:
+      - no-new-privileges
+
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: ${KONG_PG_DATABASE:-kong}
+      POSTGRES_USER: ${KONG_PG_USER:-kong}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kong}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${KONG_PG_USER:-kong}"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+    restart: always
+    stdin_open: true
+    tty: true
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - kong_data:/var/lib/postgresql/data
