@@ -35,15 +35,15 @@ server {
 
     add_header Access-Control-Allow-Headers "User-Agent";
 
-#    set $apikey_present 0;
-#    if ($http_apikey) {
-#        set $apikey_present 1;
-#    }
+    set $apikey_present 0;
+    if ($http_apikey) {
+        set $apikey_present 1;
+    }
 
     location / {
-   #     if ($apikey_present = 0) {
-  #          proxy_pass https://kong.tezblock.io;
- #       }
+        if ($apikey_present = 0) {
+            proxy_pass https://kong.tezblock.io;
+        }
         proxy_hide_header Access-Control-Allow-Origin;
         add_header Access-Control-Allow-Origin * always;
         proxy_pass http://127.0.0.1:8000;
@@ -63,9 +63,9 @@ server {
     }
 
     location /v1/blob {
-#        if ($apikey_present = 0) {
- #           return 403; # Forbidden
-  #      }
+        if ($apikey_present = 0) {
+            return 403; # Forbidden
+        }
         if ($valid_apikey = 0) {
             return 403; # Forbidden
 	} 
@@ -75,18 +75,18 @@ server {
     }
 
     location /v1/stats {
-      #  if ($apikey_present = 0) {
-       #     return 403; # Forbidden
-       # }  
+        if ($apikey_present = 0) {
+            return 403; # Forbidden
+        }  
         proxy_hide_header Access-Control-Allow-Origin;
         add_header Access-Control-Allow-Origin * always;
         proxy_pass http://127.0.0.1:8000;
     }
 
     location /v1/rollup {
-   #     if ($apikey_present = 0) {
-    #        return 403; # Forbidden
-     #   }  
+        if ($apikey_present = 0) {
+            return 403; # Forbidden
+        }  
         proxy_hide_header Access-Control-Allow-Origin;
         add_header Access-Control-Allow-Origin * always;
         proxy_pass http://127.0.0.1:8000;
